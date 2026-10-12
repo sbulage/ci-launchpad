@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CI Launchpad</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="topbar-logo">CI Launchpad</div>
+    <div class="topbar-sep"></div>
+    <div class="repo-bar">
+      <label>Repo:</label>
+      <input id="repo-input" value="" placeholder="owner/repo" data-min-ch="16" oninput="autoSizeInput(this)">
+      <button class="btn btn-load" onclick="loadRepo()">Load</button>
+    </div>
+    <div class="topbar-sep"></div>
+    <div class="branch-bar">
+      <label>Branch:</label>
+      <input id="branch-input" value="main" placeholder="main" list="branch-list" data-min-ch="8" oninput="autoSizeInput(this)">
+      <datalist id="branch-list"></datalist>
+      <button class="btn btn-load btn-branch-load" onclick="loadBranches()" title="Fetch branches">&#8635;</button>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span class="security-badge" title="All security layers active">&#128274; secured</span>
+    <button class="settings-btn" onclick="toggleSettings()" title="Settings"><span class="gear-icon">&#9881;</span></button>
+    <div class="topbar-sep"></div>
+    <div class="user-section" id="user-section">
+      <span class="gh-status" id="gh-status">checking...</span>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <!-- Stats -->
+  <div class="stats-row" id="stats-row" style="display:none">
+    <div class="stat-card">
+      <div class="stat-label">Workflows</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="stat-value accent" id="stat-wf-count">0</div>
+        <button class="btn-add-wf" id="btn-add-wf" onclick="addMoreWorkflows()" title="Add missing workflows" style="display:none">+</button>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Source</div>
+      <div class="stat-value" id="stat-repo-type" style="font-size:1rem">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Selected</div>
+      <div class="stat-value" id="stat-selected">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Recent Pass</div>
+      <div class="stat-value green" id="stat-success">-</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Recent Fail</div>
+      <div class="stat-value red" id="stat-fail">-</div>
+    </div>
+  </div>
+
+  <!-- Tabs + Presets row -->
+  <div class="tabs-row">
+    <div class="tabs">
+      <div class="tab active" data-tab="trigger" onclick="switchTab('trigger')">Trigger</div>
+      <div class="tab" data-tab="runs" onclick="switchTab('runs')">Recent Runs</div>
+      <div class="tab" data-tab="history" onclick="switchTab('history')">Trigger History</div>
+    </div>
+    <div class="presets-wrapper" id="presets-bar" style="display:none">
+      <button class="presets-toggle" onclick="togglePresetsMenu()" title="Saved favorites">&#9733; Favorites &#9662;</button>
+      <div class="presets-menu" id="presets-menu">
+        <div class="presets-menu-header">Favorites</div>
+        <div class="presets-menu-list" id="presets-menu-list">
+          <div class="presets-empty">No favorites saved yet</div>
+        </div>
+        <div class="presets-menu-actions">
+          <button class="btn btn-primary btn-sm" onclick="savePreset()">&#43; Save Current</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-trigger" class="tab-content active">
+    <div class="wf-grid" id="wf-grid">
+      <div class="empty-state">
+        <div class="icon">&#9881;</div>
+        <p>Enter a repository above and click <b>Load</b> to get started.</p>
+      </div>
+    </div>
+    <div class="actions" id="actions-bar" style="display:none">
+      <button class="btn btn-primary" id="trigger-btn" onclick="triggerSelected()" disabled>
+        Trigger Selected
+      </button>
+      <button class="btn btn-secondary" onclick="selectAll()">Select All</button>
+      <button class="btn btn-outline" onclick="clearAll()">Clear</button>
+      <span class="selected-count" id="sel-count">0 selected</span>
+      <span class="shortcut-hint">Ctrl+Enter to trigger &middot; Ctrl+A select all</span>
+    </div>
+  </div>
+
+  <div id="tab-runs" class="tab-content">
+    <div class="runs-toolbar">
+      <button class="refresh-btn" onclick="loadRuns()">Refresh</button>
+      <label class="auto-refresh-toggle">
+        <input type="checkbox" id="auto-refresh-toggle" onchange="toggleAutoRefresh(this.checked)">
+        Auto-refresh (30s)
+      </label>
+    </div>
+    <div id="runs-container"><div class="empty-state"><p>Switch to this tab to load runs.</p></div></div>
+  </div>
+
+  <div id="tab-history" class="tab-content">
+    <button class="refresh-btn" onclick="loadHistory()">Refresh</button>
+    <div id="history-container"><div class="empty-state"><p>No triggers recorded yet.</p></div></div>
+  </div>
+</div>
+
+<!-- Confirm trigger modal -->
+<div class="modal-overlay" id="confirm-modal" style="display:none">
+  <div class="confirm-body"></div>
+</div>
+
+<!-- Settings slide panel -->
+<div class="settings-backdrop" id="settings-backdrop" onclick="toggleSettings()"></div>
+<div class="settings-panel" id="settings-panel">
+  <div class="settings-header">
+    <h3>Settings</h3>
+    <button class="settings-close" onclick="toggleSettings()">&times;</button>
+  </div>
+  <div class="settings-body">
+    <div class="settings-group">
+      <div class="settings-group-title">Appearance</div>
+      <div class="settings-item">
+        <label>Theme</label>
+        <div class="theme-toggle" style="margin-top:6px">
+          <button class="theme-btn" data-theme="light" onclick="setTheme('light')" title="Light"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>
+          <button class="theme-btn" data-theme="dark" onclick="setTheme('dark')" title="Dark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></button>
+          <button class="theme-btn" data-theme="system" onclick="setTheme('system')" title="System"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="settings-group">
+      <div class="settings-group-title">Security</div>
+      <div class="settings-item">
+        <div class="settings-item-header">
+          <label>Idle Lock</label>
+          <span class="slider-value" id="idle-slider-value">15m</span>
+        </div>
+        <input type="range" class="settings-slider" id="idle-slider" min="0" max="60" step="5" value="15"
+          oninput="onIdleSliderChange(this.value)">
+        <div class="slider-labels"><span>Off</span><span>15m</span><span>30m</span><span>60m</span></div>
+      </div>
+      <div class="settings-item">
+        <div class="settings-item-header">
+          <label>Trigger Cooldown</label>
+          <span class="slider-value" id="cooldown-slider-value">30s</span>
+        </div>
+        <input type="range" class="settings-slider" id="cooldown-slider" min="10" max="300" step="5" value="30"
+          oninput="onCooldownSliderChange(this.value)">
+        <div class="slider-labels"><span>10s</span><span>1m</span><span>3m</span><span>5m</span></div>
+      </div>
+    </div>
+    <div class="settings-group">
+      <div class="settings-group-title">Security Layers</div>
+      <div class="settings-info">
+        <div class="settings-info-row"><span class="settings-check">&#10003;</span> CSRF token per session</div>
+        <div class="settings-info-row"><span class="settings-check">&#10003;</span> Rate limit (configurable cooldown)</div>
+        <div class="settings-info-row"><span class="settings-check">&#10003;</span> Idle auto-lock</div>
+        <div class="settings-info-row"><span class="settings-check">&#10003;</span> Auth re-verified on trigger</div>
+        <div class="settings-info-row"><span class="settings-check">&#10003;</span> Confirmation before fire</div>
+        <div class="settings-info-row"><span class="settings-check">&#10003;</span> Full audit trail logged</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Idle lock overlay -->
+<div class="lock-overlay" id="lock-overlay" style="display:none">
+  <div class="lock-panel">
+    <div class="lock-icon">&#128274;</div>
+    <h3>Session locked</h3>
+    <p>Inactive for too long — triggers are disabled.</p>
+    <button class="btn btn-primary" onclick="unlockSession()">Unlock</button>
+    <div class="lock-settings">
+      <label>Lock after</label>
+      <select id="idle-timeout-select" onchange="setIdleTimeout(this.value)">
+        <option value="5">5 min</option>
+        <option value="10">10 min</option>
+        <option value="15">15 min</option>
+        <option value="30">30 min</option>
+        <option value="60">60 min</option>
+        <option value="0">Never</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+  window.RUNNER_TEMPLATES = RUNNER_TEMPLATES_JSON;
+  window.DEFAULT_REPO = DEFAULT_REPO_JSON;
+  window.CSRF_TOKEN = CSRF_TOKEN_JSON;
+  window.DEFAULT_COOLDOWN = DEFAULT_COOLDOWN_JSON;
+</script>
+<script src="/static/app.js"></script>
+</body>
+</html>
