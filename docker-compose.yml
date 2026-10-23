@@ -1,0 +1,20 @@
+# GH_TOKEN=$(gh auth token) docker compose up -d --build
+# docker compose logs ci-launchpad      # prints the http://localhost:8484/?key=... link
+services:
+  ci-launchpad:
+    build: .
+    image: ci-launchpad:latest
+    container_name: ci-launchpad
+    restart: unless-stopped
+    ports:
+      # localhost only — "8484:8484" would let anyone on your network trigger CI as you
+      - "127.0.0.1:8484:8484"
+    environment:
+      GH_TOKEN: ${GH_TOKEN:?GH_TOKEN is not set - see the first line of docker-compose.yml}
+      # optional fixed key; empty = generated once and kept in the volume
+      CI_LAUNCHPAD_KEY: ${CI_LAUNCHPAD_KEY:-}
+    volumes:
+      - ci-launchpad-data:/home/launchpad
+
+volumes:
+  ci-launchpad-data:

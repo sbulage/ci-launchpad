@@ -66,7 +66,7 @@ body {
   background: var(--surface); border-bottom: 1px solid var(--border);
   padding: 12px 32px; display: flex; align-items: center;
   justify-content: space-between; position: sticky; top: 0; z-index: 50;
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px); flex-wrap: wrap; gap: 12px;
 }
 .topbar-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .topbar-logo {
@@ -76,7 +76,7 @@ body {
   background-clip: text;
 }
 .topbar-sep { width: 1px; height: 24px; background: var(--border); }
-.topbar-right { display: flex; align-items: center; gap: 14px; }
+.topbar-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 
 /* ── Repo selector ─────────────────────────────── */
 .repo-bar { display: flex; align-items: center; gap: 8px; }
@@ -289,6 +289,13 @@ body {
 
 /* ── Main content ──────────────────────────────── */
 .main { max-width: 1200px; margin: 0 auto; padding: 28px 32px; }
+@media (max-width: 600px) {
+  .topbar, .main { padding-left: 12px; padding-right: 12px; }
+  .topbar-sep { display: none; }
+  .shortcut-hint { display: none; }
+  /* Favorites wraps under the tabs on the left, so open the menu rightwards */
+  .presets-menu { left: 0; right: auto; }
+}
 
 /* ── Tabs ──────────────────────────────────────── */
 .tabs {
@@ -307,10 +314,10 @@ body {
 .tab-content.active { display: block; }
 
 /* ── Stats row ─────────────────────────────────── */
-.stats-row { display: flex; gap: 16px; margin-bottom: 24px; }
+.stats-row { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .stat-card {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 16px 20px; flex: 1;
+  border-radius: var(--radius); padding: 16px 20px; flex: 1 1 130px;
 }
 .stat-label {
   color: var(--dim); font-size: 0.75rem; text-transform: uppercase;
@@ -390,7 +397,7 @@ body {
 
 /* ── Workflow cards ────────────────────────────── */
 .wf-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
   gap: 16px; margin-bottom: 24px;
 }
 .wf-card {
@@ -439,8 +446,8 @@ body {
   display: flex; gap: 8px; align-items: center; margin-bottom: 10px;
 }
 .param-row > label {
-  font-size: 0.78rem; color: var(--dim); min-width: 80px;
-  text-align: right; font-weight: 500;
+  font-size: 0.78rem; color: var(--dim); min-width: 80px; max-width: 120px;
+  text-align: right; font-weight: 500; overflow-wrap: anywhere;
 }
 .param-row > input, .param-row > select, .runner-tooltip > select {
   flex: 1; background: var(--input-bg); color: var(--text);
@@ -541,7 +548,7 @@ body {
 
 /* ── Buttons ───────────────────────────────────── */
 .actions {
-  display: flex; gap: 12px; align-items: center;
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
   padding: 16px 20px; background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius);
   position: sticky; bottom: 16px;
@@ -600,6 +607,7 @@ body {
 }
 
 /* ── Tables ────────────────────────────────────── */
+#runs-container, #history-container { overflow-x: auto; }
 .runs-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.85rem; }
 .runs-table th {
   text-align: left; padding: 10px 14px; color: var(--dim);
@@ -709,6 +717,10 @@ a:hover { text-decoration: underline; }
   font-family: 'JetBrains Mono', monospace;
 }
 .runner-tooltip:hover::after { opacity: 1; }
+/* the hidden tooltip is wider than a phone-width card — anchor it right so it can't push the page */
+@media (max-width: 600px) {
+  .runner-tooltip::after { left: auto; right: 0; transform: none; }
+}
 
 /* ── Confirm modal ────────────────────────────── */
 .modal-overlay {

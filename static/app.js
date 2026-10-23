@@ -79,7 +79,8 @@ function getBranch() {
 
 function autoSizeInput(el) {
   const min = parseInt(el.getAttribute('data-min-ch') || '12', 10);
-  el.style.width = Math.max(min, el.value.length + 2) + 'ch';
+  // + padding and border, which `ch` alone doesn't cover under border-box
+  el.style.width = `calc(${Math.max(min, el.value.length + 2)}ch + 26px)`;
 }
 
 function initAutoSize() {
@@ -500,7 +501,7 @@ function renderKnownCard(wf, i) {
           </label>
         </div>
         <input class="qase-input" data-qase="qase_run_id" value="${qaseRunId}"
-          placeholder="Run ID (empty = new)">
+          placeholder="Run ID" title="QASE run ID — leave empty to create a new run">
       </div>
     </div>`;
 }

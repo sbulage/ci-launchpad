@@ -8,12 +8,14 @@ Usage:
 
 import argparse
 import base64
+import http.cookies
 import http.server
 import json
 import os
 import re
 import secrets
 import subprocess
+import sys
 import time
 import urllib.parse
 from datetime import datetime, timezone
@@ -26,6 +28,8 @@ from config import (
 
 STATIC_DIR = Path(__file__).parent / "static"
 TRIGGER_LOG = Path.home() / ".ci-launchpad-triggers.json"
+KEY_FILE = Path.home() / ".ci-launchpad-key"
+ACCESS_KEY = ""  # set in main()
 
 _last_trigger_time = 0
 _trigger_cooldown = DEFAULT_COOLDOWN
@@ -69,6 +73,24 @@ def save_trigger_entry(user, workflow, params, cmd=None, branch="main"):
         entry["command"] = " ".join(cmd)
     log.insert(0, entry)
     TRIGGER_LOG.write_text(json.dumps(log[:200], indent=2))
+
+
+def load_access_key():
+    """Access key from CI_LAUNCHPAD_KEY, else the saved key file, else a new one saved for restarts."""
+    key = os.environ.get("CI_LAUNCHPAD_KEY", "").strip()
+    if key:
+        return key
+    if KEY_FILE.exists() and KEY_FILE.read_text().strip():
+        return KEY_FILE.read_text().strip()
+    key = secrets.token_urlsafe(24)
+    fd = os.open(KEY_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(key)
+    return key
+
+
+def _key_matches(value):
+    return bool(value) and secrets.compare_digest(value.encode(), ACCESS_KEY.encode())
 
 
 def get_gh_user():
@@ -275,6 +297,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
+    # ── Access key: ?key=<key> once, then remembered in a cookie ──
+
+    def _cookie_name(self):
+        # cookies ignore ports — include it so two instances don't clash
+        return f"ci_lp_key_{self.server.server_address[1]}"
+
+    def _authorized(self, qs):
+        self._set_cookie = False
+        if _key_matches(qs.get("key", [""])[0]):
+            self._set_cookie = True
+            return True
+        try:
+            morsel = http.cookies.SimpleCookie(self.headers.get("Cookie", "")).get(self._cookie_name())
+        except http.cookies.CookieError:
+            return False
+        return morsel is not None and _key_matches(morsel.value)
+
+    def end_headers(self):
+        if getattr(self, "_set_cookie", False):
+            self.send_header("Set-Cookie", f"{self._cookie_name()}={ACCESS_KEY}; Path=/; "
+                             "HttpOnly; SameSite=Strict; Max-Age=31536000")
+        super().end_headers()
+
+    def _deny(self):
+        body = ("<h3>CI Launchpad: access key required</h3>"
+                "<p>Open the link printed when the server started "
+                "(Docker: <code>docker compose logs ci-launchpad</code>).</p>").encode()
+        self.send_response(403)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _json_response(self, code, obj):
         body = json.dumps(obj).encode()
         self.send_response(code)
@@ -312,6 +367,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         qs = urllib.parse.parse_qs(parsed.query)
+
+        if parsed.path == "/healthz":
+            self._json_response(200, {"ok": True})
+            return
+        if not self._authorized(qs):
+            self._deny()
+            return
 
         if parsed.path == "/api/gh-user":
             user = get_gh_user()
@@ -371,6 +433,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._serve_index()
 
     def do_POST(self):
+        if not self._authorized({}):
+            self._deny()
+            return
         csrf = self.headers.get("X-CSRF-Token", "")
         if not secrets.compare_digest(csrf, CSRF_TOKEN):
             self._json_response(403, {"ok": False, "error": "Invalid CSRF token — reload the page"})
@@ -469,14 +534,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def main():
+    # show the startup link immediately even when stdout is a log file (nohup, docker)
+    sys.stdout.reconfigure(line_buffering=True)
     parser = argparse.ArgumentParser(description="CI Launchpad server")
     parser.add_argument("--port", type=int, default=PORT)
+    # Only change for containers (0.0.0.0) — publish the port on 127.0.0.1 there
+    parser.add_argument("--host", default=os.environ.get("CI_LAUNCHPAD_HOST", "127.0.0.1"))
     args = parser.parse_args()
 
+    global ACCESS_KEY
+    ACCESS_KEY = load_access_key()
     user = get_gh_user()
-    server = http.server.HTTPServer(("127.0.0.1", args.port), Handler)
+    server = http.server.HTTPServer((args.host, args.port), Handler)
 
-    print(f"\033[1;32m  CI Launchpad running at http://localhost:{args.port}\033[0m")
+    print(f"\033[1;32m  CI Launchpad running at http://localhost:{args.port}/?key={ACCESS_KEY}\033[0m")
+    if args.host != "127.0.0.1":
+        print(f"  Listening on {args.host} — keep it off the network (docker: -p 127.0.0.1:{args.port}:{args.port})")
     if user:
         print(f"  Logged in as: {user['name'] or user['login']} (@{user['login']})")
     else:
